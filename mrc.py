@@ -35,7 +35,8 @@ range_to_zones = {
     }
 
 class WorkoutParser:
-    def __init__(self):
+    def __init__(self, workout):
+        self.workout = workout
         self.sm = {
             'SINGLE_STEP': self.parse_single_step,
             'REPEAT_BLOCK': self.parse_repeat_block
@@ -45,7 +46,15 @@ class WorkoutParser:
         self.repeat_count = 0
         self.torepeat = []
 
-    def parse(self, line):
+    def parse(self):
+        lines = [line.lower() for line in self.workout.split('\n') if line]
+        for line in lines:
+            if re.search('^#', line):
+                continue
+            self.parseline(line)
+        return self.steps
+
+    def parseline(self, line):
         self.sm[self.cur_state](line)
 
     def parse_single_step(self, line):
@@ -76,48 +85,46 @@ class WorkoutParser:
         self.torepeat = []
         self.repeat_count = 0
 
-def parse_workout(workout):
-    parser = WorkoutParser()
+class MrcGenerator:
+    def __init__(self, workout):
+        self.body = ''
+        self.workout = workout
 
-    steps = []
-    lines = [line.lower() for line in workout.split('\n') if line]
-    for line in lines:
-        if re.search('^#', line):
-            continue
-        parser.parse(line)
-    return parser.steps
+    def generate(self, workout):
+        self.generate_header()
+        self.generate_body()
+        self.generate_trailer()
+        return self.body
 
-def body_line(start, percent):
-    return "%0.2f\t%d\n" % (start, percent)
+    def generate_header(self):
+        self.body += mrc_header
 
-def body_block(start, duration, start_zone, end_zone):
-    body = ''
-    body += body_line(start, zone_to_percent[start_zone])
-    body += body_line(start+duration, zone_to_percent[end_zone])
-    return body
+    def generate_trailer(self):
+        self.body += mrc_trailer
 
-def generate_mrc_body(workout):
-    steps = parse_workout(workout)
+    def generate_body(self):
+        start = 0
+        for step in self.workout:
+            duration = float(step[0])
+            if range_to_zones.has_key(step[1]):
+                zones = range_to_zones[step[1]]
+                self.body_block(start, duration, zones[0], zones[1])
+                start += duration
+            else:
+                self.body_block(start, duration, step[1], step[1])
+                start += duration
 
-    body = ''
-    start = 0
-    for step in steps:
-        duration = float(step[0])
-        if range_to_zones.has_key(step[1]):
-            zones = range_to_zones[step[1]]
-            body += body_block(start, duration, zones[0], zones[1])
-            start += duration
-        else:
-            body += body_block(start, duration, step[1], step[1])
-            start += duration
-    return body
+    def body_line(self, start, percent):
+        return "%0.2f\t%d\n" % (start, percent)
+
+    def body_block(self, start, duration, start_zone, end_zone):
+        self.body += self.body_line(start, zone_to_percent[start_zone])
+        self.body += self.body_line(start+duration, zone_to_percent[end_zone])
 
 def generate_mrc(name, workout):
-    body = ''
-    body += mrc_header
-    body += generate_mrc_body(workout)
-    body += mrc_trailer
-    return body
+    p = WorkoutParser(workout)
+    g = MrcGenerator(p.parse())
+    return g.generate(workout)
 
 def main():
     parser = argparse.ArgumentParser(description="MRC File Generator")

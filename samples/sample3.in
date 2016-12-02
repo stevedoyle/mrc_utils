@@ -1,0 +1,10 @@
+# Warm up
+10 z1
+# Main Set
+repeat 3:
+  5  z3
+  10 z1
+30 z2
+# Cool down
+5  z2>z1
+

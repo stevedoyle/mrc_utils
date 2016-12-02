@@ -3,6 +3,7 @@
 import re
 import sys
 import argparse
+import logging
 
 mrc_header = """[COURSE HEADER]
 VERSION = 2
@@ -16,7 +17,7 @@ MINUTES PERCENT
 
 mrc_trailer = """[END COURSE DATA]"""
 
-zone_to_percent = { 
+zone_to_percent = {
     'lz1':45, 'z1':50, 'hz1':55,
     'lz2':58, 'z2':65, 'hz2':73,
     'lz3':78, 'z3':82, 'hz3':88,
@@ -33,16 +34,58 @@ range_to_zones = {
     'z3>z1':('z3','z1')
     }
 
+class WorkoutParser:
+    def __init__(self):
+        self.sm = {
+            'SINGLE_STEP': self.parse_single_step,
+            'REPEAT_BLOCK': self.parse_repeat_block
+        }
+        self.cur_state = 'SINGLE_STEP'
+        self.steps = []
+        self.repeat_count = 0
+        self.torepeat = []
+
+    def parse(self, line):
+        self.sm[self.cur_state](line)
+
+    def parse_single_step(self, line):
+        mobj = re.search('repeat\s+([\d]+):', line)
+        if mobj:
+            self.repeat_count = int(mobj.group(1))
+            self.cur_state = 'REPEAT_BLOCK'
+            return
+
+        mobj = re.search('^([\d.]+)\s+([\w><]+)', line)
+        if mobj:
+            self.steps.append((mobj.group(1), mobj.group(2)))
+
+    def parse_repeat_block(self, line):
+        mobj = re.search('\s+([\d.]+)\s+([\w><]+)', line)
+        if mobj:
+            self.torepeat.append((mobj.group(1), mobj.group(2)))
+            return
+
+        mobj = re.search('^([\d.]+)\s+([\w><]+)', line)
+        if mobj:
+            self.insert_repeat_steps()
+            self.cur_state = 'SINGLE_STEP'
+            self.parse_single_step(line)
+
+    def insert_repeat_steps(self):
+        self.steps += self.torepeat * self.repeat_count
+        self.torepeat = []
+        self.repeat_count = 0
+
 def parse_workout(workout):
+    parser = WorkoutParser()
+
     steps = []
-    lines = [line.strip() for line in workout.split('\n') if line]
+    lines = [line.lower() for line in workout.split('\n') if line]
     for line in lines:
         if re.search('^#', line):
             continue
-        mobj = re.search('^([\d.]+)\s+([\w><]+)', line)
-        if mobj:
-            steps.append((mobj.group(1), mobj.group(2)))
-    return steps
+        parser.parse(line)
+    return parser.steps
 
 def body_line(start, percent):
     return "%0.2f\t%d\n" % (start, percent)
@@ -78,9 +121,15 @@ def generate_mrc(name, workout):
 
 def main():
     parser = argparse.ArgumentParser(description="MRC File Generator")
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help="Verbose output")
     parser.add_argument('workout', type=argparse.FileType('r'))
 
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO)
+
     mrc = generate_mrc('Sample', args.workout.read())
     print mrc
 

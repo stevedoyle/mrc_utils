@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import re
-import sys
+import os
 import argparse
 import logging
 
@@ -18,23 +18,25 @@ MINUTES PERCENT
 mrc_trailer = """[END COURSE DATA]"""
 
 zone_to_percent = {
-    'lz1':45, 'z1':50, 'hz1':55,
-    'lz2':58, 'z2':65, 'hz2':73,
-    'lz3':78, 'z3':82, 'hz3':88,
-    'lz4':93, 'z4':98, 'hz4':103,
-    'lz5':107, 'z5':108, 'hz5':118,
-    'z5+':130, 'max':150
-    }
+    'lz1': 45, 'z1': 50, 'hz1': 55,
+    'lz2': 58, 'z2': 65, 'hz2': 73,
+    'lz3': 78, 'z3': 82, 'hz3': 88,
+    'lz4': 93, 'z4': 98, 'hz4': 103,
+    'lz5': 107, 'z5': 108, 'hz5': 118,
+    'z5+': 130, 'max': 150
+}
 
 range_to_zones = {
-    'z1>z2':('z1','z2'),
-    'z1>z3':('z1','z3'),
-    'z1>z4':('z1','z4'),
-    'z2>z1':('z2','z1'),
-    'z3>z1':('z3','z1')
-    }
+    'z1>z2': ('z1', 'z2'),
+    'z1>z3': ('z1', 'z3'),
+    'z1>z4': ('z1', 'z4'),
+    'z2>z1': ('z2', 'z1'),
+    'z3>z1': ('z3', 'z1')
+}
+
 
 class WorkoutParser:
+
     def __init__(self, workout):
         self.workout = workout
         self.sm = {
@@ -85,7 +87,9 @@ class WorkoutParser:
         self.torepeat = []
         self.repeat_count = 0
 
+
 class MrcGenerator:
+
     def __init__(self, workout):
         self.body = ''
         self.workout = workout
@@ -106,7 +110,7 @@ class MrcGenerator:
         start = 0
         for step in self.workout:
             duration = float(step[0])
-            if range_to_zones.has_key(step[1]):
+            if step[1] in range_to_zones:
                 zones = range_to_zones[step[1]]
                 self.body_block(start, duration, zones[0], zones[1])
                 start += duration
@@ -119,17 +123,32 @@ class MrcGenerator:
 
     def body_block(self, start, duration, start_zone, end_zone):
         self.body += self.body_line(start, zone_to_percent[start_zone])
-        self.body += self.body_line(start+duration, zone_to_percent[end_zone])
+        self.body += self.body_line(start + duration,
+                                    zone_to_percent[end_zone])
+
 
 def generate_mrc(name, workout):
     p = WorkoutParser(workout)
     g = MrcGenerator(p.parse())
     return g.generate(workout)
 
+
+def mrc_filename(in_filename):
+    return os.path.splitext(in_filename)[0] + '.mrc'
+
+
+def write_mrc_file(filename, mrc):
+    with open(filename, 'w') as outf:
+        outf.write(mrc)
+
+
 def main():
     parser = argparse.ArgumentParser(description="MRC File Generator")
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Verbose output")
+    parser.add_argument('--ftp', type=int,
+                        help='Users functional threshold power')
+    parser.add_argument('--type', choices=['mrc', 'erg'], default='mrc')
     parser.add_argument('workout', type=argparse.FileType('r'))
 
     args = parser.parse_args()
@@ -138,8 +157,8 @@ def main():
         logging.basicConfig(level=logging.INFO)
 
     mrc = generate_mrc('Sample', args.workout.read())
-    print mrc
+    write_mrc_file(mrc_filename(args.workout.name), mrc)
+
 
 if __name__ == "__main__":
     main()
-
